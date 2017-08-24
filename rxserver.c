@@ -102,6 +102,7 @@ void connection_cb(uv_stream_t* server, int status)
 
     if (ret) {
         fprintf(stderr, "uv_accept error: %s\n", uv_strerror(ret));
+        uv_close((uv_handle_t*) client, NULL);
         return;
     }
 
@@ -135,8 +136,13 @@ PHP_FUNCTION(echo_server_run)
         return;
     }
 
-    fprintf(stderr, "Start server\n");
-
+    // get CPU count
+    uv_cpu_info_t *info;
+    int cpu_count;
+    uv_cpu_info(&info, &cpu_count);
+    uv_free_cpu_info(info, cpu_count);
+    fprintf(stderr, "Start server: %d\n", cpu_count);
+    
     uv_run(loop, UV_RUN_DEFAULT);
 }
 
