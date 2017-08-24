@@ -12,7 +12,7 @@
   | obtain it through the world-wide-web, please send a note to          |
   | license@php.net so we can mail you a copy immediately.               |
   +----------------------------------------------------------------------+
-  | Author:                                                              |
+  | Author:  doubaokun@gmail.com                                         |
   +----------------------------------------------------------------------+
 */
 
@@ -27,12 +27,13 @@
 #include "ext/standard/info.h"
 #include "php_rxserver.h"
 
+#include "uv.h"
+
 /* If you declare any globals in php_rxserver.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(rxserver)
 */
 
 /* True global resources - no need for thread safety here */
-static int le_rxserver;
 
 /* {{{ PHP_INI
  */
@@ -43,6 +44,79 @@ PHP_INI_BEGIN()
 PHP_INI_END()
 */
 /* }}} */
+
+static void alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
+    buf->base = malloc(suggested_size);
+    buf->len = suggested_size;
+}
+
+void echo_write(uv_write_t *req, int status)
+{
+  if (status)
+  {
+    fprintf(stderr, "Write error %s.\n", uv_strerror(status));
+  }
+  free(req);
+}
+
+void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
+{
+    if (nread < 0) {
+        uv_close((uv_handle_t *) stream, NULL);
+    }
+
+    if (nread > 0) {
+        //printf("%u, read: %zd\n", buf->base[0], nread);
+    }
+
+    uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
+    uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
+    uv_write(req, stream, &wrbuf, 1, echo_write);
+
+    free(buf->base);
+}
+
+void connection_cb(uv_stream_t* server, int status)
+{
+    if (status) {
+        fprintf(stderr, "connection error: %s\n", uv_strerror(status));
+        return;
+    }
+
+    uv_tcp_t *client = malloc(sizeof(uv_tcp_t));
+    uv_tcp_init(server->loop, client);
+    int ret = uv_accept(server, (uv_stream_t *) client);
+
+    if (ret) {
+        fprintf(stderr, "uv_accept error: %s\n", uv_strerror(ret));
+        return;
+    }
+
+    uv_read_start((uv_stream_t *) client, alloc_cb, read_cb);
+}
+
+PHP_FUNCTION(echo_server_run)
+{
+    uv_loop_t *loop = uv_default_loop();
+
+    uv_tcp_t server4;
+    uv_tcp_init(loop, &server4);
+
+    struct sockaddr_in bind_addr4 = {};
+    uv_ip4_addr("0.0.0.0", 7001, &bind_addr4);
+    uv_tcp_bind(&server4, (const struct sockaddr*) &bind_addr4, 0);
+
+    int ret = uv_listen((uv_stream_t *)&server4, 128, connection_cb);
+
+    if (ret) {
+        fprintf(stderr, "uv_listen ipv4 error: %s\n", uv_strerror(ret));
+        return;
+    }
+
+    fprintf(stderr, "Start server\n");
+
+    uv_run(loop, UV_RUN_DEFAULT);
+}
 
 /* Remove the following function when you have successfully modified config.m4
    so that your module can be compiled into PHP, it exists only for testing
@@ -147,6 +221,7 @@ PHP_MINFO_FUNCTION(rxserver)
  */
 const zend_function_entry rxserver_functions[] = {
 	PHP_FE(confirm_rxserver_compiled,	NULL)		/* For testing, remove later. */
+    PHP_FE(echo_server_run,   NULL)       /* For testing, remove later. */
 	PHP_FE_END	/* Must be the last line in rxserver_functions[] */
 };
 /* }}} */

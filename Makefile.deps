@@ -1,0 +1,3 @@
+deps/libuv/out/Release/libuv.a:
+    cd deps/libuv && sh autogen.sh && ./configure && touch ./install-sh && chmod +x ./install-sh && make CFLAGS=-fPIC
+

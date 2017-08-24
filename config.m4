@@ -1,63 +1,65 @@
-dnl $Id$
-dnl config.m4 for extension rxserver
-
-dnl Comments in this file start with the string 'dnl'.
-dnl Remove where necessary. This file will not work
-dnl without editing.
-
-dnl If your extension references something external, use with:
 
 PHP_ARG_WITH(rxserver, for rxserver support,
-Make sure that the comment is aligned:
 [  --with-rxserver             Include rxserver support])
 
-dnl Otherwise use enable:
-
-dnl PHP_ARG_ENABLE(rxserver, whether to enable rxserver support,
-dnl Make sure that the comment is aligned:
-dnl [  --enable-rxserver           Enable rxserver support])
+dnl PHP_ADD_MAKEFILE_FRAGMENT(Makefile.deps)
 
 if test "$PHP_RXSERVER" != "no"; then
-  dnl Write more examples of tests here...
 
-  dnl # --with-rxserver -> check with-path
-  dnl SEARCH_PATH="/usr/local /usr"     # you might want to change this
-  dnl SEARCH_FOR="/include/rxserver.h"  # you most likely want to change this
-  dnl if test -r $PHP_RXSERVER/$SEARCH_FOR; then # path given as parameter
-  dnl   RXSERVER_DIR=$PHP_RXSERVER
-  dnl else # search default path list
-  dnl   AC_MSG_CHECKING([for rxserver files in default path])
-  dnl   for i in $SEARCH_PATH ; do
-  dnl     if test -r $i/$SEARCH_FOR; then
-  dnl       RXSERVER_DIR=$i
-  dnl       AC_MSG_RESULT(found in $i)
-  dnl     fi
-  dnl   done
-  dnl fi
-  dnl
-  dnl if test -z "$RXSERVER_DIR"; then
-  dnl   AC_MSG_RESULT([not found])
-  dnl   AC_MSG_ERROR([Please reinstall the rxserver distribution])
-  dnl fi
+  SOURCES=""
+  PHP_NEW_EXTENSION(rxserver, rxserver.c $SOURCES, $ext_shared, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
 
-  dnl # --with-rxserver -> add include path
-  dnl PHP_ADD_INCLUDE($RXSERVER_DIR/include)
+  PHP_ADD_EXTENSION_DEP(uv, true)
+  
+  AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 
-  dnl # --with-rxserver -> check for lib and symbol presence
-  dnl LIBNAME=rxserver # you may want to change this
-  dnl LIBSYMBOL=rxserver # you most likely want to change this 
+  AC_MSG_CHECKING(for libuv)
 
-  dnl PHP_CHECK_LIBRARY($LIBNAME,$LIBSYMBOL,
-  dnl [
-  dnl   PHP_ADD_LIBRARY_WITH_PATH($LIBNAME, $RXSERVER_DIR/$PHP_LIBDIR, RXSERVER_SHARED_LIBADD)
-  dnl   AC_DEFINE(HAVE_RXSERVERLIB,1,[ ])
-  dnl ],[
-  dnl   AC_MSG_ERROR([wrong rxserver lib version or lib not found])
-  dnl ],[
-  dnl   -L$RXSERVER_DIR/$PHP_LIBDIR -lm
-  dnl ])
-  dnl
-  dnl PHP_SUBST(RXSERVER_SHARED_LIBADD)
+  if test -x "$PKG_CONFIG" && $PKG_CONFIG --exists libuv; then
+      if $PKG_CONFIG libuv --atleast-version 1.0.0; then
+        LIBUV_INCLINE=`$PKG_CONFIG libuv --cflags`
+        LIBUV_LIBLINE=`$PKG_CONFIG libuv --libs`
+        LIBUV_VERSION=`$PKG_CONFIG libuv --modversion`
+        AC_MSG_RESULT(from pkgconfig: found version $LIBUV_VERSION)
+        AC_DEFINE(HAVE_UVLIB,1,[ ])
+      else
+        AC_MSG_ERROR(system libuv must be upgraded to version >= 1.0.0)
+      fi
+      PHP_EVAL_LIBLINE($LIBUV_LIBLINE, RXSERVER_SHARED_LIBADD)
+      PHP_EVAL_INCLINE($LIBUV_INCLINE)
 
-  PHP_NEW_EXTENSION(rxserver, rxserver.c, $ext_shared,, -DZEND_ENABLE_STATIC_TSRMLS_CACHE=1)
+    else
+      SEARCH_PATH="/usr/local /usr $(pwd)/deps/libuv"
+      SEARCH_FOR="/include/uv.h"
+      if test -r $PHP_UV/$SEARCH_FOR; then # path given as parameter
+         UV_DIR=$PHP_UV
+         AC_MSG_RESULT(from option: found in $UV_DIR)
+      else # search default path list
+         for i in $SEARCH_PATH ; do
+             if test -r $i/$SEARCH_FOR; then
+               UV_DIR=$i
+               AC_MSG_RESULT(from default path: found in $i)
+             fi
+         done
+      fi
+      PHP_ADD_INCLUDE($UV_DIR/include)
+      PHP_LIBDIR=".libs"
+      PHP_CHECK_LIBRARY(uv, uv_version,
+      [
+        PHP_ADD_LIBRARY_WITH_PATH(uv, $UV_DIR/$PHP_LIBDIR, RXSERVER_SHARED_LIBADD)
+        AC_DEFINE(HAVE_UVLIB,1,[ ])
+      ],[
+        AC_MSG_ERROR([wrong uv library version or library not found])
+      ],[
+        -L$UV_DIR/$PHP_LIBDIR -lm
+      ])
+      case $host in
+          *linux*)
+              CFLAGS="$CFLAGS -lrt"
+      esac
+    fi
+
+  PHP_SUBST([CFLAGS])
+  PHP_SUBST(RXSERVER_SHARED_LIBADD)
+
 fi
