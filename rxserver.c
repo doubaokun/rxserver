@@ -50,7 +50,7 @@ static void alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) 
     buf->len = suggested_size;
 }
 
-void echo_write(uv_write_t *req, int status)
+void on_write(uv_write_t *req, int status)
 {
   if (status)
   {
@@ -69,9 +69,15 @@ void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
         //printf("%u, read: %zd\n", buf->base[0], nread);
     }
 
-    uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-    uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-    uv_write(req, stream, &wrbuf, 1, echo_write);
+    //uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
+    //uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
+    //uv_write(req, stream, &wrbuf, 1, on_write);
+
+    char *output = "hello world\n";
+    int len = strlen(output);
+    uv_buf_t wrbuf = uv_buf_init(output, len);
+    uv_write_t *wreq = (uv_write_t*) malloc(sizeof(uv_write_t));
+    uv_write(wreq, stream, &wrbuf, 1, on_write);
 
     free(buf->base);
 }
