@@ -1,3 +1,4 @@
 <?php
 
-echo_server_run();
+echo_server_run('bruce');
+

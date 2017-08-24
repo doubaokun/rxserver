@@ -45,9 +45,11 @@ PHP_INI_END()
 */
 /* }}} */
 
-char response[] = "HTTP/1.1 200 OK\r\n"
+char response_tpl[] = "HTTP/1.1 200 OK\r\n"
 "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-"Hello world.\r\n";
+"Hello %s.\r\n";
+
+char *response;
 
 static void alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
     buf->base = malloc(suggested_size);
@@ -66,7 +68,7 @@ void on_write(uv_write_t *req, int status)
 void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     if (nread < 0) {
-        uv_close((uv_handle_t *) stream, NULL);
+        return uv_close((uv_handle_t *) stream, NULL);
     }
 
     if (nread > 0) {
@@ -83,6 +85,8 @@ void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
     uv_write(wreq, stream, &wrbuf, 1, on_write);
 
     free(buf->base);
+    // close the connection
+    uv_close((uv_handle_t *) stream, NULL);
 }
 
 void connection_cb(uv_stream_t* server, int status)
@@ -106,6 +110,15 @@ void connection_cb(uv_stream_t* server, int status)
 
 PHP_FUNCTION(echo_server_run)
 {
+    char *name;
+    size_t name_len;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &name, &name_len) == FAILURE) {
+        RETURN_NULL();
+    }
+
+    spprintf(&response, 0, response_tpl, name);
+
     uv_loop_t *loop = uv_default_loop();
 
     uv_tcp_t server4;
