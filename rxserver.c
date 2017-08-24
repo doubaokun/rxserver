@@ -45,6 +45,10 @@ PHP_INI_END()
 */
 /* }}} */
 
+char response[] = "HTTP/1.1 200 OK\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n\r\n"
+"Hello world.\r\n";
+
 static void alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
     buf->base = malloc(suggested_size);
     buf->len = suggested_size;
@@ -73,9 +77,8 @@ void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
     //uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
     //uv_write(req, stream, &wrbuf, 1, on_write);
 
-    char *output = "hello world\n";
-    int len = strlen(output);
-    uv_buf_t wrbuf = uv_buf_init(output, len);
+    int len = strlen(response);
+    uv_buf_t wrbuf = uv_buf_init(response, len);
     uv_write_t *wreq = (uv_write_t*) malloc(sizeof(uv_write_t));
     uv_write(wreq, stream, &wrbuf, 1, on_write);
 
