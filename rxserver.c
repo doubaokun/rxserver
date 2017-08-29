@@ -78,20 +78,16 @@ void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
         //printf("%u, read: %zd\n", buf->base[0], nread);
     }
 
-    //uv_write_t *req = (uv_write_t *) malloc(sizeof(uv_write_t));
-    //uv_buf_t wrbuf = uv_buf_init(buf->base, nread);
-    //uv_write(req, stream, &wrbuf, 1, on_write);
-
     int len = strlen(response);
     uv_buf_t wrbuf = uv_buf_init(response, len);
     uv_write_t *wreq = (uv_write_t*) malloc(sizeof(uv_write_t));
     uv_write(wreq, stream, &wrbuf, 1, on_write);
 
-    fprintf(stdout, "receive pid: %d, Buf %s\n", getpid(), buf->base);
-
+    //fprintf(stdout, "receive pid: %d, Buf %s\n", getpid(), buf->base);
     free(buf->base);
     // close the connection
     uv_close((uv_handle_t *) stream, NULL);
+
 }
 
 static void ipc_send_tcp_connection_to_work_cb(uv_write_t* req, int status) {
@@ -124,59 +120,13 @@ void connection_cb(uv_stream_t* server, int status)
 
     uv_write_t *write_req = (uv_write_t*) malloc(sizeof(uv_write_t));
     uv_buf_t dummy_buf = uv_buf_init(".", 1);
-
-    fprintf(stderr, "client fd: %d\n", client->type);
-
     uv_write2(write_req, (uv_stream_t*) &pipe_handle, &dummy_buf, 1, (uv_stream_t*) client, ipc_send_tcp_connection_to_work_cb);
-
-    // uv_write_t *write_req = (uv_write_t*) malloc(sizeof(uv_write_t));
-    // uv_buf_t dummy_buf = uv_buf_init(".", 1);
-    // uv_write(write_req, (uv_stream_t*) &pipe_handle, &dummy_buf, 1, ipc_send_tcp_connection_to_work_cb);
-
-    fprintf(stderr, "Notify worker %d\n", getpid());
-
-    //uv_read_start((uv_stream_t *) client, alloc_cb, read_cb);
-
+    uv_close((uv_handle_t *) client, NULL);
 }
-
-
-static void socket_cb(uv_poll_t* poll, int status, int events) {
-  ssize_t cnt;
-
-  fprintf(stdout, "pid: %d, get event %d\n", getpid(), events);
-
-  int socket_cb_read_size = 3;
-  char socket_cb_read_buf[1024];
-
-  if (socket_cb_read_fd) {  
-    cnt = read(socket_cb_read_fd, socket_cb_read_buf, socket_cb_read_size);
-  }
-
-  fprintf(stdout, "pid: %d, Buf %s\n", getpid(), socket_cb_read_buf);
-
-  //uv_close((uv_handle_t*) poll, NULL);
-}
-
-// void echo_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
-//     if (nread > 0) {
-//         write_req_t *req = (write_req_t*) malloc(sizeof(write_req_t));
-//         req->buf = uv_buf_init(buf->base, nread);
-//         uv_write((uv_write_t*) req, client, &req->buf, 1, on_write);
-//         return;
-//     }
-
-//     if (nread < 0) {
-//         if (nread != UV_EOF)
-//             fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-//         uv_close((uv_handle_t*) client, NULL);
-//     }
-
-//     free(buf->base);
-// }
 
 void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf) {
 
-    fprintf(stderr, "Worker %d %s\n", getpid(), buf->base);
+    //fprintf(stderr, "Worker %d %s\n", getpid(), buf->base);
 
     if (nread < 0) {
         if (nread != UV_EOF)
@@ -194,17 +144,17 @@ void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf) {
     uv_handle_type pending = uv_pipe_pending_type(pipe);
     assert(pending == UV_TCP);
 
-    // uv_tcp_t *client = (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
-    // uv_tcp_init(loop, client);
-    // if (uv_accept(q, (uv_stream_t*) client) == 0) {
-    //     uv_os_fd_t fd;
-    //     uv_fileno((const uv_handle_t*) client, &fd);
-    //     fprintf(stderr, "Worker %d: Accepted fd %d\n", getpid(), fd);
-    //     uv_read_start((uv_stream_t*) client, alloc_buffer, echo_read);
-    // }
-    // else {
-    //     uv_close((uv_handle_t*) client, NULL);
-    // }
+    uv_tcp_t *client = (uv_tcp_t*) malloc(sizeof(uv_tcp_t));
+    uv_tcp_init(q->loop, client);
+    if (uv_accept(q, (uv_stream_t*) client) == 0) {
+        uv_os_fd_t fd;
+        uv_fileno((const uv_handle_t*) client, &fd);
+        //fprintf(stderr, "Worker %d: Accepted fd %d\n", getpid(), fd);
+        uv_read_start((uv_stream_t*) client, alloc_cb, read_cb);
+    }
+    else {
+        uv_close((uv_handle_t*) client, NULL);
+    }
 }
 
 PHP_FUNCTION(echo_server_run)
@@ -230,8 +180,7 @@ PHP_FUNCTION(echo_server_run)
 
     // create socket pair
     int socket_fds[2];
-    //socketpair(AF_UNIX, SOCK_STREAM, 0, socket_fds);
-    pipe(socket_fds);
+    socketpair(AF_UNIX, SOCK_STREAM, 0, socket_fds);
 
     uv_pipe_init(loop, &pipe_handle, 1);
 
@@ -240,28 +189,7 @@ PHP_FUNCTION(echo_server_run)
     if (child_pid != 0) {
       /* parent */
 
-      // send message to child
-      //write(socket_fds[1], "hi\n", 3);
-      //write(socket_fds[1], "hi\n", 3);
-
       uv_pipe_open(&pipe_handle, socket_fds[1]);
-
-      //socket_cb_read_fd = socket_fds[1];
-
-      // uv_write_t *write_req = (uv_write_t*) malloc(sizeof(uv_write_t));
-      // uv_buf_t dummy_buf = uv_buf_init(".", 1);
-      // uv_write(write_req, (uv_stream_t*) &pipe_handle, &dummy_buf, 1, NULL);
-
-      // uv_write(write_req, (uv_stream_t*) &pipe_handle, &dummy_buf, 1, NULL);
-
-      // uv_tcp_t *client = malloc(sizeof(uv_tcp_t));
-      // uv_tcp_init(loop, client);
-
-      // uv_write_t *write_req = (uv_write_t*) malloc(sizeof(uv_write_t));
-      // uv_buf_t dummy_buf = uv_buf_init(".", 1);
-      // uv_write2(write_req, (uv_stream_t*) &pipe_handle, &dummy_buf, 1, (uv_stream_t*) client, NULL);
-
-
 
       // tcp server
       uv_tcp_t server4;
@@ -287,14 +215,10 @@ PHP_FUNCTION(echo_server_run)
       uv_pipe_open(&pipe_handle, socket_fds[0]);
 
       uv_read_start((uv_stream_t *)&pipe_handle, alloc_cb, on_new_connection);
-
-      fprintf(stdout, "uv_read_start %d\n", getpid());
       
       uv_run(loop, UV_RUN_DEFAULT);
 
     }
-
-
 }
 
 /* Remove the following function when you have successfully modified config.m4
