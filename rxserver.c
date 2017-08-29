@@ -245,35 +245,6 @@ PHP_FUNCTION(echo_server_run)
 
 }
 
-/* Remove the following function when you have successfully modified config.m4
-   so that your module can be compiled into PHP, it exists only for testing
-   purposes. */
-
-/* Every user-visible function in PHP should document itself in the source */
-/* {{{ proto string confirm_rxserver_compiled(string arg)
-   Return a string to confirm that the module is compiled in */
-PHP_FUNCTION(confirm_rxserver_compiled)
-{
-	char *arg = NULL;
-	size_t arg_len, len;
-	zend_string *strg;
-
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "s", &arg, &arg_len) == FAILURE) {
-		return;
-	}
-
-	strg = strpprintf(0, "Congratulations! You have successfully modified ext/%.78s/config.m4. Module %.78s is now compiled into PHP.", "rxserver", arg);
-
-	RETURN_STR(strg);
-}
-/* }}} */
-/* The previous line is meant for vim and emacs, so it can correctly fold and
-   unfold functions in source code. See the corresponding marks just before
-   function definition, where the functions purpose is also documented. Please
-   follow this convention for the convenience of others editing your code.
-*/
-
-
 /* {{{ php_rxserver_init_globals
  */
 /* Uncomment this function if you have INI entries
@@ -347,9 +318,8 @@ PHP_MINFO_FUNCTION(rxserver)
  * Every user visible function must have an entry in rxserver_functions[].
  */
 const zend_function_entry rxserver_functions[] = {
-	PHP_FE(confirm_rxserver_compiled,	NULL)		/* For testing, remove later. */
-    PHP_FE(echo_server_run,   NULL)       /* For testing, remove later. */
-	PHP_FE_END	/* Must be the last line in rxserver_functions[] */
+  PHP_FE(echo_server_run,   NULL)
+	PHP_FE_END
 };
 /* }}} */
 
