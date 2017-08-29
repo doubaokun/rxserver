@@ -50,16 +50,24 @@ char response_tpl[] = "HTTP/1.1 200 OK\r\n"
 "Hello %s.\r\n";
 
 char *response;
-static int socket_cb_read_fd;
 
-uv_pipe_t pipe_handle;
+typedef struct child_worker {
+    uv_pipe_t pipe_handle;
+    int socket_fds[2];
+} child_worker;
 
-static void alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
+child_worker *workers;
+
+int counter = 0;
+int total_cpu_count;
+
+static void alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) 
+{
     buf->base = malloc(suggested_size);
     buf->len = suggested_size;
 }
 
-void on_write(uv_write_t *req, int status)
+static void on_write(uv_write_t *req, int status)
 {
   if (status)
   {
@@ -68,7 +76,7 @@ void on_write(uv_write_t *req, int status)
   free(req);
 }
 
-void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
+static void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     if (nread < 0) {
         return uv_close((uv_handle_t *) stream, NULL);
@@ -90,7 +98,8 @@ void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 
 }
 
-static void ipc_send_tcp_connection_to_work_cb(uv_write_t* req, int status) {
+static void ipc_send_tcp_connection_to_work_cb(uv_write_t* req, int status)
+{
     free(req);
     if (status)  {
         fprintf(stderr,
@@ -101,7 +110,7 @@ static void ipc_send_tcp_connection_to_work_cb(uv_write_t* req, int status) {
 }
 
 
-void connection_cb(uv_stream_t* server, int status)
+static void connection_cb(uv_stream_t* server, int status)
 {
     if (status) {
         fprintf(stderr, "connection error: %s\n", uv_strerror(status));
@@ -120,11 +129,16 @@ void connection_cb(uv_stream_t* server, int status)
 
     uv_write_t *write_req = (uv_write_t*) malloc(sizeof(uv_write_t));
     uv_buf_t dummy_buf = uv_buf_init(".", 1);
-    uv_write2(write_req, (uv_stream_t*) &pipe_handle, &dummy_buf, 1, (uv_stream_t*) client, ipc_send_tcp_connection_to_work_cb);
+
+    struct child_worker *worker = &workers[counter];
+
+    uv_write2(write_req, (uv_stream_t*) &worker->pipe_handle, &dummy_buf, 1, (uv_stream_t*) client, ipc_send_tcp_connection_to_work_cb);
+    counter = (counter + 1) % total_cpu_count;
     uv_close((uv_handle_t *) client, NULL);
 }
 
-void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf) {
+void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf) 
+{
 
     //fprintf(stderr, "Worker %d %s\n", getpid(), buf->base);
 
@@ -176,49 +190,59 @@ PHP_FUNCTION(echo_server_run)
     uv_cpu_info(&info, &cpu_count);
     uv_free_cpu_info(info, cpu_count);
 
+    total_cpu_count = cpu_count;
+
     fprintf(stdout, "[master] pid: %d, start server, cpu count: %d\n", getpid(), cpu_count);
 
-    // create socket pair
-    int socket_fds[2];
-    socketpair(AF_UNIX, SOCK_STREAM, 0, socket_fds);
+    workers = (child_worker*) calloc(cpu_count, sizeof(struct child_worker));
 
-    uv_pipe_init(loop, &pipe_handle, 1);
+    while (cpu_count--) {
+      struct child_worker *worker = &workers[cpu_count];
 
-    pid_t child_pid = fork();
+      // create socket pair
+      socketpair(AF_UNIX, SOCK_STREAM, 0, worker->socket_fds);
+      uv_pipe_init(loop, &worker->pipe_handle, 1);
 
-    if (child_pid != 0) {
-      /* parent */
+      pid_t child_pid = fork();
 
-      uv_pipe_open(&pipe_handle, socket_fds[1]);
+      if (child_pid != 0) {
+        /* parent */
+        uv_pipe_open(&worker->pipe_handle, worker->socket_fds[1]);
 
-      // tcp server
-      uv_tcp_t server4;
-      uv_tcp_init(loop, &server4);
+      } else {
+        /* child */
+        uv_loop_fork(loop);
 
-      struct sockaddr_in bind_addr4 = {};
-      uv_ip4_addr("0.0.0.0", 7001, &bind_addr4);
-      uv_tcp_bind(&server4, (const struct sockaddr*) &bind_addr4, 0);
+        uv_pipe_open(&worker->pipe_handle, worker->socket_fds[0]);
 
-      int ret = uv_listen((uv_stream_t *)&server4, 128, connection_cb);
+        uv_read_start((uv_stream_t *)&worker->pipe_handle, alloc_cb, on_new_connection);
+        
+        uv_run(loop, UV_RUN_DEFAULT);
 
-      if (ret) {
-          fprintf(stderr, "uv_listen ipv4 error: %s\n", uv_strerror(ret));
-          return;
+        return;
+
       }
 
-      uv_run(loop, UV_RUN_DEFAULT);
-
-    } else {
-      /* child */
-      uv_loop_fork(loop);
-
-      uv_pipe_open(&pipe_handle, socket_fds[0]);
-
-      uv_read_start((uv_stream_t *)&pipe_handle, alloc_cb, on_new_connection);
-      
-      uv_run(loop, UV_RUN_DEFAULT);
 
     }
+
+    // tcp server
+    uv_tcp_t server4;
+    uv_tcp_init(loop, &server4);
+
+    struct sockaddr_in bind_addr4 = {};
+    uv_ip4_addr("0.0.0.0", 7001, &bind_addr4);
+    uv_tcp_bind(&server4, (const struct sockaddr*) &bind_addr4, 0);
+
+    int ret = uv_listen((uv_stream_t *)&server4, 128, connection_cb);
+
+    if (ret) {
+        fprintf(stderr, "uv_listen ipv4 error: %s\n", uv_strerror(ret));
+        return;
+    }
+
+    uv_run(loop, UV_RUN_DEFAULT);
+
 }
 
 /* Remove the following function when you have successfully modified config.m4
