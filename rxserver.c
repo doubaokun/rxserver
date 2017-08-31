@@ -47,7 +47,7 @@ PHP_INI_END()
 
 char response_tpl[] = "HTTP/1.1 200 OK\r\n"
 "Content-Type: text/html; charset=UTF-8\r\n\r\n"
-"Hello %s.\r\n";
+"%s\r\n";
 
 char *response;
 
@@ -86,8 +86,18 @@ static void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
         //printf("%u, read: %zd\n", buf->base[0], nread);
     }
 
-    int len = strlen(response);
-    uv_buf_t wrbuf = uv_buf_init(response, len);
+    zval function;
+    zval retval;
+
+    ZVAL_STRING(&function, "echo_server_process");
+    call_user_function_ex(CG(function_table), NULL, &function, &retval, 0, NULL, 0, NULL TSRMLS_CC);
+
+    char *response1;
+    char *ret = Z_STRVAL(retval);
+    spprintf(&response1, 0, response_tpl, ret);
+
+    int len = strlen(response1);
+    uv_buf_t wrbuf = uv_buf_init(response1, len);
     uv_write_t *wreq = (uv_write_t*) malloc(sizeof(uv_write_t));
     uv_write(wreq, stream, &wrbuf, 1, on_write);
 
@@ -173,14 +183,14 @@ void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf)
 
 PHP_FUNCTION(echo_server_run)
 {
-    char *name;
-    size_t name_len;
+    //char *name;
+    //size_t name_len;
 
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &name, &name_len) == FAILURE) {
-        RETURN_NULL();
-    }
+    //if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &name, &name_len) == FAILURE) {
+    //    RETURN_NULL();
+    //}
 
-    spprintf(&response, 0, response_tpl, name);
+    //spprintf(&response, 0, response_tpl, name);
 
     uv_loop_t *loop = uv_default_loop();
 
