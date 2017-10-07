@@ -46,6 +46,7 @@ PHP_INI_END()
 /* }}} */
 
 char response_tpl[] = "HTTP/1.1 200 OK\r\n"
+"Connection: close\r\n"
 "Content-Type: text/html; charset=UTF-8\r\n\r\n"
 "%s\r\n";
 
@@ -102,9 +103,10 @@ static void read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
     uv_write(wreq, stream, &wrbuf, 1, on_write);
 
     //fprintf(stdout, "receive pid: %d, Buf %s\n", getpid(), buf->base);
+
     free(buf->base);
     // close the connection
-    uv_close((uv_handle_t *) stream, NULL);
+    uv_close((uv_handle_t *) stream, (uv_close_cb) free);
 
 }
 
@@ -133,7 +135,7 @@ static void connection_cb(uv_stream_t* server, int status)
 
     if (ret) {
         fprintf(stderr, "uv_accept error: %s\n", uv_strerror(ret));
-        uv_close((uv_handle_t*) client, NULL);
+        uv_close((uv_handle_t*) client, (uv_close_cb) free);
         return;
     }
 
@@ -144,7 +146,7 @@ static void connection_cb(uv_stream_t* server, int status)
 
     uv_write2(write_req, (uv_stream_t*) &worker->pipe_handle, &dummy_buf, 1, (uv_stream_t*) client, ipc_send_tcp_connection_to_work_cb);
     counter = (counter + 1) % total_cpu_count;
-    uv_close((uv_handle_t *) client, NULL);
+    uv_close((uv_handle_t *) client, (uv_close_cb) free);
 }
 
 void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf) 
@@ -155,7 +157,7 @@ void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf)
     if (nread < 0) {
         if (nread != UV_EOF)
             fprintf(stderr, "pid: %d, Read error %s\n", getpid(), uv_err_name(nread));
-        uv_close((uv_handle_t*) q, NULL);
+        uv_close((uv_handle_t*) q, (uv_close_cb) free);
         return;
     }
 
@@ -177,7 +179,7 @@ void on_new_connection(uv_stream_t *q, ssize_t nread, const uv_buf_t *buf)
         uv_read_start((uv_stream_t*) client, alloc_cb, read_cb);
     }
     else {
-        uv_close((uv_handle_t*) client, NULL);
+        uv_close((uv_handle_t*) client, (uv_close_cb) free);
     }
 }
 
