@@ -1,0 +1,36 @@
+
+
+sudo apt-get install make automake libtool curl
+cd deps
+curl -sSL https://github.com/libuv/libuv/archive/v1.12.0.tar.gz | sudo tar zxfv - -C /usr/local/src
+cd /usr/local/src/libuv-1.12.0
+sudo sh autogen.sh
+sudo ./configure
+sudo make
+sudo make install
+sudo rm -rf /usr/local/src/libuv-1.12.0 && cd ~/
+
+
+phpize
+./configure
+make
+
+
+touch /etc/php71/conf.d/rxserver.ini
+
+[rxserver]
+extension="/vagrant/modules/rxserver.so"
+
+ldconfig -p | grep libuv
+ldconfig -v | grep libuv
+
+php -i | grep rx
+
+curl -v http://127.0.0.1:7001/
+
+ab -c 100 -n 10000 http://127.0.0.1:7001/
+ab -c 100 -n 10000 http://127.0.0.1:7002/test1.php
+
+
+ab -c 1000 -n 10000 http://127.0.0.1:7001/
+ab -c 1000 -n 10000 http://127.0.0.1:7002/test1.php
